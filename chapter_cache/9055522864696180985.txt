@@ -1,0 +1,841 @@
+Title: 第一章 矿奴
+
+var mouseY = 0;
+        var ChapterTitle = "第一章 矿奴";
+        var BookInfo = "";
+        var TargetUrl = "";
+        var TxtContents = "";
+        var IsSettingPanelShow = false;
+        var BookName = "人道大圣";
+        var names = ["陆叶"];
+        var prevpage ="/read/55500_41833595.html";
+var nextpage ="/read/55500_41833686.html";
+var chapterpage ="/book/55500.html";
+        var Domain = "";
+
+        $(window).keydown(function (event) {
+            switch (event.keyCode) {
+                case 37:
+                    window.top.location = prevpage;
+                    break;
+                case 39:
+                    window.top.location = nextpage;
+                    break;
+                case 13:
+                    if (event.keyCode == 13) {
+                        window.top.location = "/book/55500.html";
+                        return false;
+                    }
+            }
+        });
+
+        var xmlhttp; if (window.XMLHttpRequest) { xmlhttp = new XMLHttpRequest(); } else { xmlhttp = new ActiveXObject("Microsoft.XMLHTTP"); }
+
+        var ScrollNum = 1;
+
+        var LoadCount = 0;
+
+        var ReadSetting = { "fontsize": "18px", "fontweight": "bold", "ModeName": "NormalMode", "Brightness": "0.5", "UseFullScreen": "0" };
+
+        //黑夜模式
+        var NightMode = { "color": "#8A7B66", "bgcolor": "#000" };
+
+        //怀旧纸张
+        var NPZMode = { "color": "#000", "bgimg": "url(/images/fg_hz.png)" };
+
+        //淡蓝海洋
+        var BlueMode = { "color": "#000", "bgimg": "url(/images/fg_dl.png)" };
+
+        //粉红世家
+        var PinkMode = { "color": "#000", "bgimg": "url(/images/fg_hf.png)" };
+
+        //灰色世界
+        var NormalMode = { "color": "#000", "bgcolor": "#f4f4f4" };
+
+        //白雪天地
+        var WhiteMode = { "color": "#000", "bgcolor": "#fff" };
+
+        //明黄清俊
+        var YellowMode = { "color": "#000", "bgimg": "url(/images/fg_mh.png)" };
+
+        const synth = window.speechSynthesis;
+        var al_voice = null;
+
+        synth.addEventListener("voiceschanged", () => {
+            if (!al_voice) {
+                al_voice = synth.getVoices();
+            }
+        });
+
+        //多一种尝试
+        synth.onvoiceschanged = () => {
+            if (!al_voice) {
+                al_voice = synth.getVoices();
+            }
+        };
+
+        var VLang = "";
+        var VVoiceURI = "";
+        var VRate = 1;
+        var VPitch = 1;
+        var UserVoiceObj = null;
+        var TxtIdNum = [90];
+        var IsPalyingVoice = false;
+
+        var CurrentId = 0;
+        var IsCanResume = false;
+
+        $(document).ready(function () {
+
+            try {
+                var MinSize = parseInt($(window).width());
+
+                if (MinSize > parseInt($(window).height())) {
+                    MinSize = parseInt($(window).height());
+                }
+            }
+            catch (e) {
+            }
+
+            replaceHtmlContents(names);
+
+            $("#Lab_Contents").click(function (evt) {
+                if (IsSettingPanelShow) {
+                    ShowSettingPanel();
+                }
+                else {
+                    mouseY = evt.pageY;
+                    autoScroll();
+                    mouseY = 0;
+                }
+            });
+
+
+            if ('speechSynthesis' in window) {
+
+                $("#Btn_PlayVoice").show();
+
+                synth.addEventListener("voiceschanged", () => {
+                    if (!al_voice) {
+                        al_voice = synth.getVoices();
+                    }
+                });
+
+                //多一种尝试
+                synth.onvoiceschanged = () => {
+                    if (!al_voice) {
+                        al_voice = synth.getVoices();
+                    }
+                };
+
+                document.addEventListener("visibilitychange", () => {
+
+                    if (document.hidden) {
+                        if (IsPalyingVoice) {
+                            IsCanResume = true;
+                        }
+                    }
+                    else {
+                        if (IsPalyingVoice) {
+                            IsCanResume = false;
+
+                            if (CurrentId + 3 > TxtIdNum) {
+                                return;
+                            }
+
+                            synth.cancel();
+
+                            DoResumeTalk();
+                        }
+                    }
+                })
+
+                $("#List_Voice").change(function () {
+                    var val = $("#List_Voice").val();
+
+                    al_voice.forEach(e => {
+
+                        if (e.name === val) {
+
+                            VLang = e.lang;
+
+                            VVoiceURI = e.name;
+
+                            UserVoiceObj = e;
+                        }
+                    })
+
+                    SaveSetting();
+
+                    synth.cancel();
+
+                    DoTalkParam();
+                }
+                );
+
+                $("#List_Rate").change(function () {
+                    VRate = $("#List_Rate").val();
+                    synth.cancel();
+                    DoTalkParam();
+
+                    SaveSetting();
+
+                    getSupportVoices();
+                }
+                );
+
+                $("#List_Pitch").change(function () {
+
+                    VPitch = $("#List_Pitch").val();
+
+                    synth.cancel();
+                    DoTalkParam();
+
+                    SaveSetting();
+
+                    getSupportVoices();
+                }
+                );
+
+                setTimeout(getSupportVoices, 2000);
+
+                synth.cancel();
+            }
+
+            setTimeout(ProRead, 2000);
+
+            try {
+                doReadStyle();
+            }
+            catch (e) {
+
+            }
+
+            $.getScript("https://www.dxmwx.org/BM/Count.aspx?bookid=55500&chapterid=41833685&title=第一章 矿奴&referer=" + escape(document.referrer));
+        });
+
+        function getSupportVoices() {
+
+            var dropdown = $("#List_Voice");
+
+            var optionsCount = dropdown.find("option").length;
+            if (optionsCount > 1) {
+                return;
+            }
+
+            if (!al_voice) {
+                al_voice = synth.getVoices();
+            }
+
+            if (!al_voice) {
+                console.log("null");
+                return;
+            }
+
+            console.log("开始设置语言" + al_voice.length);
+
+            al_voice.forEach(function (e) {
+                var vname = e.name;
+
+                if (e.lang.indexOf("zh-") > -1 || e.lang.indexOf("zh_") > -1 || e.lang.indexOf("ZH-") > -1 || e.lang.indexOf("ZH_") > -1) {
+                    //下拉框文字
+                    var ListMsg = e.name.replace("- Chinese (Simplified, PRC)", "普通话").replace("- Chinese (Cantonese Traditional)", "广东话")
+                        .replace("- Chinese (Hong Kong)", "香港").replace("- Chinese (Mainland)", "普通话").replace("- Chinese (Zhongyuan Mandarin Shaanxi)", "陕西话")
+                        .replace("- Chinese (Northeastern Mandarin)", "东北话").replace("- Chinese (Taiwan)", "台湾话").replace("- Chinese (Taiwanese Mandarin)", "台湾普通话")
+                        .replace("(Natural)", "").replace(" Online", "").trim();
+
+                    var IsSelect = "";
+
+                    if (e.name == VVoiceURI) {
+                        IsSelect = "selected";
+                    }
+
+                    if (e.localService) {
+                        var option = "<option value='" + e.name + "'>本地:" + ListMsg + "</option>";
+                        $("#List_Voice").append(option);
+                    }
+                    else {
+
+                        var option = "<option value='" + e.name + "'>远程:" + ListMsg + "</option>";
+                        $("#List_Voice").append(option);
+                    }
+                }
+            })
+        }
+
+        function DoTalk() {
+
+            synth.cancel();
+
+            DoSpeak("大熊猫文学", false, 0);
+
+            DoSpeak("人道大圣", false, 0);
+
+            DoSpeak("第一章 矿奴", false, 0);
+
+            InitParamColor();
+
+            DoTalkParam();
+        }
+
+        function DoTalkParam() {
+
+
+            for (var i = CurrentId; i < TxtIdNum; i++) {
+                var msg = $("#txt_" + i).text();
+
+                if (msg.length > 0) {
+                    DoSpeak(msg, true, i);
+                }
+            }
+        }
+
+        function DoTalkPrev() {
+            synth.cancel();
+
+            InitParamColor();
+
+            if (CurrentId > 0) {
+                CurrentId--;
+            }
+
+            DoTalkParam();
+        }
+
+        function DoTalkNext() {
+            synth.cancel();
+
+            InitParamColor();
+
+            CurrentId++;
+
+            DoTalkParam();
+        }
+
+        function InitParamColor() {
+            for (var i = 0; i < TxtIdNum; i++) {
+                $("#txt_" + i).removeAttr("style");
+            }
+        }
+
+        function DoSpeak(msg, isParam, paramId) {
+
+            IsPalyingVoice = true;
+
+            var vo = new SpeechSynthesisUtterance();
+
+            var LastScrollTime = new Date();
+
+            //声音基础控制
+            vo.volume = 1; // 声音的音量，区间范围是0到1，默认是1。
+            vo.rate = VRate;// 设置播放语速，范围：0.1 - 10之间    正常为1倍播放
+            vo.pitch = VPitch; // 表示说话的音高，数值，范围从0（最小）到2（最大）。默认值为1。
+
+            //朗读声音选择
+            vo.lang = VLang; // 使用的语言，字符串， 例如："zh-cn"
+            vo.voiceURI = VVoiceURI;
+
+            if (!UserVoiceObj) {
+                al_voice.forEach(e => {
+
+                    if (e.name === VVoiceURI) {
+
+                        VLang = e.lang;
+
+                        VVoiceURI = e.name;
+
+                        UserVoiceObj = e;
+                    }
+                })
+            }
+
+            vo.voice = UserVoiceObj;
+
+            vo.onend = (event) => {
+
+                //计数器加1
+                if (isParam) {
+                    $("#txt_" + paramId).removeAttr("style");
+                    $("#txt_" + paramId).text(msg);
+                }
+            }
+
+            vo.onstart = (event) => {
+
+                if (isParam) {
+                    CurrentId = paramId;
+
+                    $("#txt_" + CurrentId).attr("style", "color:red;");
+
+                    if ($("#txt_" + paramId).offset().top - $(document).scrollTop() + 150 > $(window).height()) {
+                        $(document).scrollTop($("#txt_" + paramId).offset().top - 80);
+                    }
+                }
+
+            }
+
+            vo.onerror = (event) => {
+                console.log('onerror' + event.msg);
+            }
+
+            vo.onpause = (event) => {
+            }
+
+            vo.onresume = (event) => {
+            }
+
+            vo.onboundary = (event) => {
+                if (isParam) {
+                    var cmsg = "";
+                    if (event.charIndex + 1 < msg.length) {
+                        cmsg = msg.substring(0, event.charIndex)
+                            + "<span  id='SpanReadTag" + paramId + "' style='color:yellow;'>" + msg.substring(event.charIndex, event.charIndex + 2) + "</span>"
+                            + msg.substring(event.charIndex + 2);
+                    }
+                    else {
+                        cmsg = msg.substring(0, event.charIndex) + "<span id='SpanReadTag" + paramId + "' style='color:yellow;'>" + msg.substring(event.charIndex, event.charIndex + 1) + "</span>";
+                    }
+
+                    $("#txt_" + paramId).html(cmsg);
+
+                    //动态滚动当前阅读标签到舒服的可视位置
+                    var timeNow = new Date();
+
+                    if (timeNow - LastScrollTime > 10 * 1000) {
+
+                        if ($("#SpanReadTag" + paramId).offset().top - $(document).scrollTop() + 150 > $(window).height()) {
+                            $(document).scrollTop($("#SpanReadTag" + paramId).offset().top - 80);
+                        }
+
+                        LastScrollTime = new Date();
+                    }
+                }
+            }
+            vo.text = msg;
+
+            synth.speak(vo);
+        }
+
+        function DoPauseTalk() {
+            synth.pause();
+
+            IsCanResume = true;
+        }
+
+        function DoResumeTalk() {
+
+            if (IsCanResume) {
+                synth.resume();
+
+                IsCanResume = false;
+            }
+            else {
+                DoTalkParam();
+            }
+        }
+
+        function DoCancelTalk() {
+            synth.cancel();
+        }
+
+        function count() {
+            try {
+
+            }
+            catch (e) {
+            }
+        }
+
+        function ProRead() {
+            try { xmlhttp.open("GET", nextpage, true); xmlhttp.send(); } catch (e) { }
+        }
+
+        function doReadStyle() {
+            $("body").removeClass();
+
+            var CacheStyle = getCookie("MySetting");
+
+            if (!CacheStyle) {
+
+                ReadSetting.fontsize = "20px";
+
+                ReadSetting.fontweight = "normal";
+
+                ReadSetting.ModeName = "YellowMode";
+
+                ReadSetting.Brightness = "0";
+
+                ReadSetting.VLang = "";
+                ReadSetting.VVoiceURI = "";
+                ReadSetting.VRate = 1;
+                ReadSetting.VPitch = 1;
+
+            }
+            else {
+                ReadSetting = eval("(" + CacheStyle + ")");
+            }
+
+            $("#Lab_Contents").css("font-size", ReadSetting.fontsize);
+
+            if (ReadSetting.fontsize == "26px") {
+                $("#Lab_Contents").css("line-height", "46px");
+            }
+            else if (ReadSetting.fontsize == "24px") {
+                $("#Lab_Contents").css("line-height", "42px");
+            }
+            else if (ReadSetting.fontsize == "22px") {
+                $("#Lab_Contents").css("line-height", "38px");
+            }
+            else if (ReadSetting.fontsize == "20px") {
+                $("#Lab_Contents").css("line-height", "34px");
+            }
+            else if (ReadSetting.fontsize == "18px") {
+                $("#Lab_Contents").css("line-height", "30px");
+            }
+            else {
+                $("#Lab_Contents").css("line-height", "26px");
+            }
+
+            $("#Lab_Contents").css("font-weight", ReadSetting.fontweight);
+
+            doChangeMode();
+
+            //从cookie获取语音设置
+            VLang = ReadSetting.VLang;
+            VVoiceURI = ReadSetting.VVoiceURI;
+            VRate = ReadSetting.VRate;
+            VPitch = ReadSetting.VPitch;
+
+
+            $("#List_Rate").val(VRate);
+            $("#List_Pitch").val(VPitch);
+        }
+
+        function doChangeMode() {
+
+            $("#TopPanel").css("color", "");
+            $("#TopPanel").css("background-color", "");
+            $("#TopPanel").css("border-bottom", "");
+            $("#PanBottom").css("color", "");
+            $("#PanBottom").css("background-color", "");
+            $("#PanBottom").css("border-top", "");
+
+            $("#PageBody").css("backgrouond-repeat", "repeat-y");
+
+            if (ReadSetting.ModeName == "NightMode") {
+                //无背景图
+                $("#PageBody").css("color", NightMode.color);
+                $("#PageBody").css("background-color", NightMode.bgcolor);
+                $("#PageBody").css("background-image", "");
+                $("#TopPanel").css("color", NightMode.color);
+                $("#TopPanel").css("background-color", NightMode.bgcolor);
+                $("#TopPanel").css("border-bottom", "1px solid #8A7B66");
+
+                $("#PanBottom").css("color", NightMode.color);
+                $("#PanBottom").css("background-color", NightMode.bgcolor);
+                $("#PanBottom").css("border-top", "1px solid #8A7B66");
+            }
+            else if (ReadSetting.ModeName == "NPZMode") {
+                $("#PageBody").css("background-color", "#FEF5CA");
+                $("#PageBody").css("color", NPZMode.color);
+                $("#PageBody").css("background-image", NPZMode.bgimg);
+            }
+            else if (ReadSetting.ModeName == "BlueMode") {
+                $("#PageBody").css("background-color", "");
+                $("#PageBody").css("color", BlueMode.color);
+                $("#PageBody").css("background-image", BlueMode.bgimg);
+            }
+            else if (ReadSetting.ModeName == "PinkMode") {
+                $("#PageBody").css("background-color", "");
+                $("#PageBody").css("color", PinkMode.color);
+                $("#PageBody").css("background-image", PinkMode.bgimg);
+            }
+            else if (ReadSetting.ModeName == "NormalMode") {
+                //无背景图
+                $("#PageBody").css("color", NormalMode.color);
+                $("#PageBody").css("background-color", NormalMode.bgcolor);
+                $("#PageBody").css("background-image", "");
+            }
+            else if (ReadSetting.ModeName == "WhiteMode") {
+                //无背景图
+                $("#PageBody").css("color", WhiteMode.color);
+                $("#PageBody").css("background-color", WhiteMode.bgcolor);
+                $("#PageBody").css("background-image", "");
+            }
+            else if (ReadSetting.ModeName == "YellowMode") {
+                $("#PageBody").css("background-color", "");
+                $("#PageBody").css("color", YellowMode.color);
+                $("#PageBody").css("background-image", YellowMode.bgimg);
+            }
+        }
+
+        function ChangeFontSize(obj) {
+
+            ReadSetting.fontsize = obj;
+
+            $("#Lab_Contents").css("font-size", obj);
+
+            if (obj == "26px") {
+                $("#Lab_Contents").css("line-height", "46px");
+            }
+            else if (obj == "24px") {
+                $("#Lab_Contents").css("line-height", "42px");
+            }
+            else if (obj == "22px") {
+                $("#Lab_Contents").css("line-height", "38px");
+            }
+            else if (obj == "20px") {
+                $("#Lab_Contents").css("line-height", "34px");
+            }
+            else if (obj == "18px") {
+                $("#Lab_Contents").css("line-height", "30px");
+            }
+            else {
+                $("#Lab_Contents").css("line-height", "26px");
+            }
+
+            SaveSetting();
+        }
+
+        function ChangeFontWeight(obj) {
+            ReadSetting.fontweight = obj;
+            $("#Lab_Contents").css("font-weight", obj);
+            SaveSetting();
+        }
+
+        function ChangeModeName(obj) {
+            ReadSetting.ModeName = obj;
+            doChangeMode();
+            SaveSetting();
+        }
+
+        function SaveSetting() {
+            if (ReadSetting.fontsize == null || typeof (ReadSetting.fontsize) == "undefined") {
+                ReadSetting.fontsize = "18px";
+            }
+
+            if (ReadSetting.fontweight == null || typeof (ReadSetting.fontweight) == "undefined") {
+                ReadSetting.fontweight = "normal";
+            }
+
+            ReadSetting.Brightness = "0";
+
+            if (ReadSetting.ModeName == null || typeof (ReadSetting.ModeName) == "undefined") {
+                ReadSetting.ModeName = "NPZMode";
+            }
+
+            var SettingString = "{\"fontsize\": \"" + ReadSetting.fontsize + "\", \"fontweight\": \"" + ReadSetting.fontweight + "\",\"Brightness\":\"" + ReadSetting.Brightness + "\", \"ModeName\": \"" + ReadSetting.ModeName + "\""
+                + ",\"VLang\": \"" + VLang + "\",\"VVoiceURI\": \"" + VVoiceURI + "\",\"VRate\": \"" + VRate + "\", \"VPitch\": \"" + VPitch + "\"}";
+
+            setCookie("MySetting", SettingString, 2 * 360 * 24 * 60 * 60);
+        }
+
+        function ShowSettingPanel() {
+            if (!IsSettingPanelShow) {
+                var ScrollY;
+                if (window.pageYOffset) {
+                    ScrollY = window.pageYOffset;
+                }
+                else if (document.documentElement && document.documentElement.scrollTop) {
+                    ScrollY = document.documentElement.scrollTop;
+                }
+                else if (document.body) {
+                    ScrollY = document.body.scrollTop;
+                }
+
+                $("#Pan_Top").show();
+
+                $("#Pan_Setting").show();
+
+                IsSettingPanelShow = true;
+            }
+            else {
+                $("#Pan_Top").hide();
+                $("#Pan_Setting").hide();
+                IsSettingPanelShow = false;
+            }
+        }
+
+        function autoScroll() {
+            var WinHeight = $(window).height();
+
+            var ScrollY;
+            if (window.pageYOffset) {
+                ScrollY = window.pageYOffset;
+            }
+            else if (document.documentElement && document.documentElement.scrollTop) {
+                ScrollY = document.documentElement.scrollTop;
+            }
+            else if (document.body) {
+                ScrollY = document.body.scrollTop;
+            } else {
+                return;
+            }
+
+            var winPosY = mouseY - ScrollY;
+
+            if (winPosY > WinHeight * 3 / 4) {
+                var newScrollY = ScrollY + WinHeight - 50;
+                $(document).scrollTop(newScrollY);
+            }
+            else if (winPosY < WinHeight * 1 / 4) {
+                var newScrollY = ScrollY - WinHeight + 50;
+                $(document).scrollTop(newScrollY);
+            } else if (winPosY < WinHeight * 5 / 8 && winPosY > WinHeight * 3 / 8) {
+                ShowSettingPanel();
+            }
+
+        }
+
+        function JumpNext() {
+            top.location = nextpage;
+        }
+
+        function JumpPrev() {
+            top.location = prevpage;
+        }
+
+        function BackBook() {
+            top.location = "/book/55500.html";
+        }
+
+        //写入cookies
+        function setCookie(name, value, expires) {
+            var exp = new Date();
+            exp.setTime(exp.getTime() + expires * 1000);
+            var expString = "; expires=" + exp.toGMTString();
+            var pathString = "; path=/";
+            var domain = "; domain=" + Domain;
+            document.cookie = name + "=" + escape(value) + expString + domain + pathString;
+        }
+
+        //读取cookies
+        function getCookie(name) {
+            var arrStr = document.cookie.split("; ");
+            for (var i = 0; i < arrStr.length; i++) {
+                var temp = arrStr[i].split("=");
+                if (temp[0] == name) {
+                    return unescape(temp[1]);
+                }
+            }
+            return null;
+        }
+
+        //删除cookies
+        function delCookie(name) {
+            setCookie(name, "", -10);
+        }
+
+        function replaceHtmlContents(names) {
+            // 获取id为“Lab_Contents”的元素
+            const labContentsElement = document.getElementById('Lab_Contents');
+
+            // 检查元素是否存在
+            if (!labContentsElement) {
+                console.error("找不到id为'Lab_Contents'的元素");
+                return;
+            }
+
+            // 检查输入是否为数组
+            if (!Array.isArray(names)) {
+                console.error("输入必须是一个数组");
+                return;
+            }
+
+            // 获取原始文本内容 (使用 innerHTML，因为要插入 HTML 标签)
+            let originalText = labContentsElement.innerHTML;
+
+            // 替换文本中的对应词
+            for (let i = 0; i < names.length; i++) {
+                // 使用正则表达式进行全局替换，并使用转义处理特殊字符
+                const regex = new RegExp(names[i].replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g');
+
+                originalText = originalText.replace(regex, "<span style=\"color:#795548;font-weight: bold;\">" + names[i] + "</span>");
+            }
+
+            // 将替换后的文本设置回元素
+            labContentsElement.innerHTML = originalText;
+        }
+a { color: inherit; text-decoration: none; outline: none; }
+
+            a[href]:active,
+            button:active { background-image: -webkit-linear-gradient(to top, rgba(0, 0, 0, 0.05), rgba(0, 0, 0, 0.05)); background-image: linear-gradient(to top, rgba(0, 0, 0, 0.05), rgba(0, 0, 0, 0.05)); }
+
+        .erzitop { float: left; width: 25%; text-align: center; line-height: 44px; color: #8A7B66; }
+
+        .erzitop_ { float: left; width: 20%; text-align: center; line-height: 44px; color: #8A7B66; }
+
+        .erzibottom { float: left; width: 33%; text-align: center; line-height: 44px; color: #8A7B66; }
+
+        .box-all { line-height: 44px; font-size: 14px; color: #000; background-color: #fff; width: 100%; color: #000; position: fixed; left: 0; right: 0; bottom: 0px; margin: 0 auto; padding: 0px 10px; }
+
+        .box-list { border-bottom: 1px solid #e1e1e1; position: relative; line-height: 60px; overflow: hidden; }
+
+        .box-close { width: 44px; height: 44px; color: #808080; font-size: 20px; position: absolute; right: 0px; top: 0px; }
+
+        .box-list span { padding: 0px 8px; float: left; }
+
+        .clear { clear: both; }
+
+        .box-list p { width: 30px; height: 30px; margin: 15px 4px; float: left; }
+
+        .kong p { margin: 10px 0px; }
+
+        .bodywidth { width: 780px; margin: 0 auto; }
+
+        body { margin: 0; background-color: #ede8d5; }
+
+        .onlyh5 { display: none; }
+
+        .top1_pan { display: none; height: 64px; position: fixed; top: 0px; width: 760px; margin: 0 auto; background-color: #fff; background-size: 100%; border-bottom: 1px solid #bfa785; }
+
+        @media only screen and (max-device-width: 600px) {
+            .bodywidth { width: 100%; margin: 0 auto; }
+            .top1_pan { display: none; height: 64px; position: fixed; top: 0px; left: 0px; width: 100%; background-color: #fff; background-size: 100%; border-bottom: 1px solid #bfa785; }
+            .onlypc { display: none; }
+
+            .onlyh5 { display: none; }
+        }
+window.dataLayer = window.dataLayer || [];
+        function gtag() { dataLayer.push(arguments); }
+        gtag('js', new Date());
+
+        gtag('config', 'G-829J453C49');
+.height-top { height: 70px; }
+
+    .imgh5wh { float: left; width: 218px; height: 55px; margin: 15px 92px 0 0; }
+
+    .shujia { overflow: hidden; width: 120px; height: 40px; line-height: 40px; background: #fff; float: right; text-align: center; font-size: 14px; border: 1px solid #e6e6e6; margin-top: 22px; }
+
+
+    @media only screen and (max-device-width: 600px) {
+        .height-top { height: 60px; }
+
+        .shujia { overflow: hidden; width: 80px; height: 34px; line-height: 34px; background: #fff; float: right; text-align: center; font-size: 14px; border: 1px solid #e6e6e6; margin-top: 13px; }
+
+        .imgh5wh { float: left; width: 139px; height: 35px; margin: 4px 40px 0 0; }
+    }
+document.onkeydown = KeyDown;
+
+    function KeyDown() {
+        if (event.keyCode == 13) {
+            Search();
+            return false;
+        }
+    }
+
+    function Search() {
+        var keywords = $("#Txt_KeywordsPC").val();
+        if (keywords != null && keywords != "") {
+            top.location = "/list/" + keywords + ".html";
+        }
+        return false;
+    }
+
+    function Searchh5() {
+        var keywords = $("#Txt_Keywords").val();
+        if (keywords != null && keywords != "") {
+            top.location = "/list/" + keywords + ".html";
+        }
+        return false;
+    }
