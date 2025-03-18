@@ -1,79 +1,66 @@
 # QuickReader
 
-A web-based novel reader application that allows you to read novels from various sources on your iPhone or any other device with a web browser.
+QuickReader is a novel reading application available in two versions:
+1. A desktop application built with Python and PySide6
+2. A web application with a Flask backend and JavaScript frontend
+
+Both applications provide a clean, distraction-free reading experience for web novels.
+
+## Applications
+
+### Desktop App
+
+The desktop application uses PySide6 (Qt) for the UI and provides a native experience on Windows, macOS, and Linux.
+
+[Go to Desktop App →](./desktop-app/)
+
+### Web App
+
+The web application consists of a Flask backend and a vanilla JavaScript frontend, allowing it to run in any modern web browser.
+
+[Go to Web App →](./web-app/)
 
 ## Features
 
-- Load novels from supported sources
-- Browse your library of saved books
-- Read chapters with a clean, mobile-friendly interface
-- Navigate between chapters easily
-- Dark mode for comfortable reading
-- Automatic caching of chapters for offline reading
+Both applications share the following features:
+- Modern and intuitive user interface
+- Chapter navigation
+- Bookmark management
+- Library of saved books
+- Content caching
+- Dark mode support
+- Font size customization
+- Support for various novel websites
 
-## Installation
+## Getting Started
 
-1. Clone the repository:
+### Desktop App
+
 ```bash
-git clone https://github.com/yourusername/quickreader.git
-cd quickreader
-```
-
-2. Create a virtual environment and activate it:
-```bash
-python -m venv venv
-source venv/bin/activate  # On Windows, use: venv\Scripts\activate
-```
-
-3. Install dependencies:
-```bash
+cd desktop-app
+python -m venv .venv
+source .venv/bin/activate  # On Windows: .venv\Scripts\activate
 pip install -r requirements.txt
+python main.py
 ```
 
-## Running the Application
+### Web App
 
-1. Start the web server:
 ```bash
-python web_server.py
+cd web-app
+python -m venv .venv
+source .venv/bin/activate  # On Windows: .venv\Scripts\activate
+pip install -r requirements.txt
+cd backend
+python app.py
 ```
 
-2. Open your web browser and navigate to:
-```
-http://localhost:5000
-```
+Then open a web browser and navigate to: http://localhost:3000
 
-3. On your iPhone or other device, make sure you're connected to the same network as your computer and navigate to:
-```
-http://<your-computer-ip>:5000
-```
+## Screenshots
 
-Replace `<your-computer-ip>` with your computer's local IP address.
-
-## Usage
-
-1. Enter a novel URL in the input field and click "Load"
-2. Select a book from your library to view its chapters
-3. Click on a chapter to read it
-4. Use the navigation buttons to move between chapters
-
-## Supported Sources
-
-- HetuShu
-- DXMWX
-- More sources coming soon...
-
-## Development
-
-The application is built with:
-- Flask for the web server
-- PyQt5 for the core functionality
-- BeautifulSoup4 for web scraping
-- SQLite for data storage
-
-## Contributing
-
-Contributions are welcome! Please feel free to submit a Pull Request.
+*[Screenshots will be added here]*
 
 ## License
 
-This project is licensed under the MIT License - see the LICENSE file for details. 
+MIT 
