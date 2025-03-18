@@ -338,148 +338,55 @@ class DXMWXSource(NovelSource):
             return None
 
     def extract_chapter_content(self, url: str) -> Optional[Dict]:
-        try:
-            html_content = self._get_page_content(url)
-            if not html_content:
-                logger.error(f"Failed to get page content from {url}")
-                return None
-
-            logger.info(f"Extracting content from {url}")
-            soup = BeautifulSoup(html_content, 'lxml')
-            content = None
-            title = None
-            js_vars = {}
-
-            # 1. First try JavaScript extraction
-            logger.info("Trying JavaScript extraction")
-            js_vars = self._extract_js_variables(html_content)
-            content = js_vars.get('content')
-            title = js_vars.get('title')
-            
-            if content:
-                logger.info("Found content in JavaScript variables")
-            
-            # 2. Try direct TxtContents regex if JS vars didn't work
-            if not content:
-                logger.info("Trying direct TxtContents regex")
-                txt_contents_match = re.search(r'TxtContents\s*=\s*[\'"]([^\'"]+)[\'"]', html_content, re.DOTALL)
-                if txt_contents_match:
-                    content = txt_contents_match.group(1).encode().decode('unicode_escape')
-                    logger.info("Found content in TxtContents")
-
-            # 3. Try HTML parsing if still no content
-            if not content:
-                logger.info("Trying HTML parsing")
-                content = self._extract_content_from_html(soup)
-                if content:
-                    logger.info("Found content in HTML")
-
-            # 4. Try API extraction as last resort
-            if not content:
-                book_id_match = re.search(r'/read/(\d+)_(\d+)\.html', url)
-                if book_id_match:
-                    logger.info("Trying API extraction")
-                    book_id = book_id_match.group(1)
-                    chapter_id = book_id_match.group(2)
-                    content = self._extract_content_from_api(book_id, chapter_id)
-                    if content:
-                        logger.info("Found content from API")
-
-            if not content:
-                logger.error(f"Failed to extract content from {url}")
-                return None
-
-            # Clean up the content
-            content = content.replace('&nbsp;', ' ')
-            content = re.sub(r'<br\s*/?>', '\n', content)
-            content = re.sub(r'<[^>]+>', '', content)
-            
-            # Split into paragraphs and clean
-            paragraphs = []
-            # First try splitting by double newlines
-            parts = content.split('\n\n')
-            if len(parts) <= 1:
-                # If no double newlines, try single newlines
-                parts = content.split('\n')
-            if len(parts) <= 1:
-                # If still no parts, try splitting by Chinese punctuation
-                parts = re.split(r'([。！？…]+)', content)
-                # Rejoin punctuation marks with the text
-                parts = [''.join(parts[i:i+2]) for i in range(0, len(parts)-1, 2)]
-            
-            for p in parts:
-                p = p.strip()
-                if p and len(p) > 10:  # Only keep non-empty paragraphs with meaningful content
-                    # Remove extra spaces and normalize whitespace
-                    p = re.sub(r'\s+', ' ', p)
-                    # Remove common navigation text
-                    if not any(skip in p for skip in ['上一章', '下一章', '目录', '书页']):
-                        paragraphs.append(p)
-            
-            if not paragraphs:
-                logger.error("No valid paragraphs found after cleaning")
-                return None
-            
-            content = '\n\n'.join(paragraphs)
-            logger.info(f"Final content has {len(paragraphs)} paragraphs")
-
-            # Get title if not found in JS variables
-            if not title:
-                title_element = soup.find(['h1', 'h2', 'h3'])
-                if title_element:
-                    title = title_element.get_text(strip=True)
-
-            # Get book name
-            book_name = js_vars.get('book_name')
-            if not book_name:
-                book_name_element = soup.find('meta', {'property': 'og:novel:book_name'})
-                if book_name_element:
-                    book_name = book_name_element.get('content')
-            if not book_name:
-                book_name = '人道大圣'
-
-            # Get navigation URLs
-            base_url = 'https://www.dxmwx.org'
-            prev_url = js_vars.get('prev_url')
-            next_url = js_vars.get('next_url')
-            chapter_list_url = js_vars.get('chapter_list_url')
-
-            # If URLs not found in JS, try HTML
-            if not all([prev_url, next_url, chapter_list_url]):
-                for link in soup.find_all('a'):
-                    text = link.get_text(strip=True)
-                    href = link.get('href', '')
-                    if '上一章' in text and not prev_url:
-                        prev_url = href
-                    elif '下一章' in text and not next_url:
-                        next_url = href
-                    elif '目录' in text and not chapter_list_url:
-                        chapter_list_url = href
-
-            # Process URLs
-            nav_urls = {
-                'prev_url': prev_url,
-                'next_url': next_url,
-                'chapter_list_url': chapter_list_url
-            }
-            
-            for key, link in nav_urls.items():
-                if link and not link.startswith('http'):
-                    nav_urls[key] = urljoin(base_url, link)
-
-            return {
-                'title': title or 'Unknown Title',
-                'content': content,
-                'book_name': book_name,
-                'prev_url': nav_urls['prev_url'],
-                'next_url': nav_urls['next_url'],
-                'chapter_list_url': nav_urls['chapter_list_url'],
-                'url': url
-            }
-
-        except Exception as e:
-            logger.error(f"Error processing {url}: {str(e)}")
+        """Extract chapter content and metadata"""
+        html_content = self._get_page_content(url)
+        if not html_content:
             return None
+
+        # Extract variables from JavaScript
+        variables = self._extract_js_variables(html_content)
+        if not variables:
+            return None
+
+        # Create soup for parsing
+        soup = BeautifulSoup(html_content, 'html.parser')
+
+        # Get content from variables or fallback to parsing
+        content = variables.get('content')
+        if not content:
+            content = self._extract_content(soup)
+            if not content:
+                # Retry loading once
+                html_content = self._get_page_content(url)
+                if html_content:
+                    variables = self._extract_js_variables(html_content)
+                    content = variables.get('content')
+                    if not content:
+                        content = self._extract_content(BeautifulSoup(html_content, 'html.parser'))
+
+        if not content:
+            return None
+
+        # Clean and format content
+        content = self._clean_content(content)
+        if not content:
+            return None
+
+        # Get navigation links
+        nav = self._extract_navigation(soup, url)
+
+        # Build result
+        result = {
+            'url': url,
+            'title': variables.get('title', ''),
+            'book_name': variables.get('book_name', ''),
+            'content': content,
+            'prev_url': nav['prev_url'] or variables.get('prev_url'),
+            'next_url': nav['next_url'] or variables.get('next_url'),
+            'chapter_list_url': nav['chapter_list_url'] or variables.get('chapter_list_url')
+        }
+
+        return result
 
     def get_chapter_list(self, url: str) -> Optional[List[Dict]]:
         try:

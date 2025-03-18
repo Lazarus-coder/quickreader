@@ -2,9 +2,9 @@ from flask import Flask, render_template, jsonify, request
 import queue
 import threading
 import logging
-from main import MainWindow, SourceManager, CacheManager, ReadingProgress
+from main import MainWindow
 from PySide6.QtWidgets import QApplication
-from PySide6.QtCore import QObject, Signal, QTimer
+from PySide6.QtCore import QObject, Signal, QThread
 import sys
 
 # Set up logging
@@ -25,29 +25,62 @@ app = Flask(__name__)
 command_queue = queue.Queue()
 response_queue = queue.Queue()
 
-# Initialize Qt application
-qt_app = QApplication(sys.argv)
-
-# Create main window instance
-main_window = MainWindow()
+class QtThread(QThread):
+    def __init__(self):
+        super().__init__()
+        self.app = QApplication(sys.argv)
+        self.main_window = MainWindow()
+        self.web_bridge = WebBridge(self.main_window)
+        
+    def run(self):
+        # Process Qt events
+        while True:
+            self.app.processEvents()
+            self.msleep(100)  # Sleep to prevent high CPU usage
 
 class WebBridge(QObject):
-    def __init__(self):
+    def __init__(self, main_window):
         super().__init__()
         self.main_window = main_window
         self.command_queue = command_queue
         self.response_queue = response_queue
+        
+        # Connect to MainWindow signals
+        self.main_window.chapter_loaded.connect(self._on_chapter_loaded)
+        self.main_window.error_occurred.connect(self._on_error)
+        self.main_window.loading_started.connect(self._on_loading_started)
+    
+    def _on_chapter_loaded(self, url: str, title: str):
+        """Handle chapter loaded event"""
+        self.response_queue.put({
+            'type': 'chapter_loaded',
+            'data': {'url': url, 'title': title}
+        })
+    
+    def _on_error(self, error_message: str):
+        """Handle error event"""
+        self.response_queue.put({
+            'type': 'error',
+            'message': error_message
+        })
+        
+    def _on_loading_started(self, message: str):
+        """Handle loading started event"""
+        self.response_queue.put({
+            'type': 'loading_started',
+            'message': message
+        })
         
     def process_command(self, command):
         """Process a command from the web interface"""
         try:
             if command['type'] == 'load_novel':
                 url = command['url']
-                # Use QTimer to ensure GUI operations happen in main thread
-                QTimer.singleShot(0, lambda: self._load_novel(url))
+                self.main_window.url_input.setText(url)
+                self.main_window.load_novel()
             elif command['type'] == 'load_chapter':
                 url = command['url']
-                QTimer.singleShot(0, lambda: self._load_chapter(url))
+                self.main_window.load_chapter(url)
             elif command['type'] == 'get_chapter_list':
                 chapters = self.main_window.current_chapter_list
                 self.response_queue.put({
@@ -66,39 +99,17 @@ class WebBridge(QObject):
                 'type': 'error',
                 'message': str(e)
             })
-    
-    def _load_novel(self, url):
-        """Load novel in main thread"""
-        try:
-            self.main_window.url_input.setText(url)
-            self.main_window.load_novel()
-        except Exception as e:
-            logger.error(f"Error loading novel: {str(e)}", exc_info=True)
-            self.response_queue.put({
-                'type': 'error',
-                'message': str(e)
-            })
-    
-    def _load_chapter(self, url):
-        """Load chapter in main thread"""
-        try:
-            self.main_window.load_chapter(url)
-        except Exception as e:
-            logger.error(f"Error loading chapter: {str(e)}", exc_info=True)
-            self.response_queue.put({
-                'type': 'error',
-                'message': str(e)
-            })
 
-# Create web bridge instance
-web_bridge = WebBridge()
+# Create and start Qt thread
+qt_thread = QtThread()
+qt_thread.start()
 
 def process_commands():
     """Process commands from the web interface"""
     while True:
         try:
             command = command_queue.get()
-            web_bridge.process_command(command)
+            qt_thread.web_bridge.process_command(command)
         except Exception as e:
             logger.error(f"Error in command processing: {str(e)}", exc_info=True)
 

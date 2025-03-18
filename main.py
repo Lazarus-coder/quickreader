@@ -4,7 +4,7 @@ from PySide6.QtWidgets import (QApplication, QMainWindow, QWidget, QVBoxLayout,
                            QListWidget, QMessageBox, QProgressBar, QSplitter,
                            QMenu, QToolBar, QStatusBar, QListWidgetItem,
                            QInputDialog)
-from PySide6.QtCore import Qt, QThread, Signal
+from PySide6.QtCore import Qt, QThread, Signal, QTimer
 from PySide6.QtGui import QIcon, QTextCursor, QFont, QAction
 import os
 from sources import SourceManager
@@ -29,80 +29,149 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 class ChapterLoader(QThread):
+    loading_started = Signal()
     chapter_loaded = Signal(dict)
     error_occurred = Signal(str)
-    loading_started = Signal(str)
-    
-    def __init__(self, source_manager, cache_manager):
+
+    def __init__(self, source_manager=None, cache_manager=None):
         super().__init__()
-        self.source_manager = source_manager
-        self.cache_manager = cache_manager
+        self._is_loading = False
         self.url = None
         self.book_id = None
-        self.is_loading = False
-        
-    def set_url(self, url: str, book_id: Optional[int] = None):
+        self.source_manager = source_manager or SourceManager()
+        self.cache_manager = cache_manager or CacheManager()
+
+    @property
+    def is_loading(self):
+        return self._is_loading
+
+    def set_url(self, book_id: int, url: str):
+        """Set the URL and book ID to load"""
         self.url = url
         self.book_id = book_id
-        
+
     def run(self):
+        """Load chapter content"""
         if not self.url:
-            self.error_occurred.emit("No URL provided")
+            self.error_occurred.emit("No URL set")
             return
-            
-        self.is_loading = True
-        self.loading_started.emit(self.url)
-        
+
         try:
-            # Try to load from cache first
-            if self.book_id:
-                cached_content = self.cache_manager.get_cached_chapter(self.book_id, self.url)
-                if cached_content:
-                    self.chapter_loaded.emit(cached_content)
-                    self.is_loading = False
-                    return
-                    
-            # If not in cache, fetch from source
+            self._is_loading = True
+            self.loading_started.emit()
+
+            # Check cache first
+            cached_content = self.cache_manager.get_cached_chapter(self.book_id, self.url)
+            if cached_content:
+                logger.info("Using cached content")
+                self.chapter_loaded.emit(cached_content)
+                return
+
+            # Get source handler
             source = self.source_manager.get_source_for_url(self.url)
             if not source:
                 self.error_occurred.emit("Unsupported source")
-                self.is_loading = False
                 return
-                
+
+            # Extract content
             content = source.extract_chapter_content(self.url)
             if not content:
-                self.error_occurred.emit("Failed to load chapter content")
-                self.is_loading = False
+                self.error_occurred.emit("Failed to extract content")
                 return
-                
-            # Cache the content if we have a book_id
-            if self.book_id:
-                self.cache_manager.cache_chapter(self.book_id, self.url, content)
-                
+
+            # Cache content
+            self.cache_manager.cache_chapter(self.book_id, self.url, content)
+
+            # Emit loaded content
             self.chapter_loaded.emit(content)
-            
+
         except Exception as e:
             logger.error(f"Error loading chapter: {str(e)}", exc_info=True)
             self.error_occurred.emit(str(e))
         finally:
-            self.is_loading = False
+            self._is_loading = False
+
+    def _extract_js_variables(self, html_content: str) -> dict:
+        """Extract variables from JavaScript with improved error handling"""
+        variables = {}
+        
+        # Extract all relevant variables using regex
+        patterns = {
+            'title': r'var\s+ChapterTitle\s*=\s*["\']([^"\']+)["\']',
+            'book_name': r'var\s+BookName\s*=\s*["\']([^"\']+)["\']',
+            'prev_url': r'var\s+prevpage\s*=\s*["\']([^"\']+)["\']',
+            'next_url': r'var\s+nextpage\s*=\s*["\']([^"\']+)["\']',
+            'chapter_list_url': r'var\s+chapterpage\s*=\s*["\']([^"\']+)["\']',
+            'content': r'var\s+TxtContents\s*=\s*["\']([^"\']+)["\']'
+        }
+        
+        for key, pattern in patterns.items():
+            try:
+                match = re.search(pattern, html_content, re.DOTALL)
+                if match:
+                    value = match.group(1)
+                    # Handle escaped content
+                    if key == 'content':
+                        value = value.encode().decode('unicode_escape')
+                    variables[key] = value
+                    logger.debug(f"Found {key}: {value[:50]}...")
+            except Exception as e:
+                logger.warning(f"Error extracting {key}: {str(e)}")
+        
+        return variables
+
+    def _extract_nav_variables(self, html_content: str) -> dict:
+        """Extract navigation variables from JavaScript"""
+        nav = {}
+        
+        # Extract navigation variables using regex
+        patterns = {
+            'prev_url': r'var\s+prevpage\s*=\s*["\']([^"\']+)["\']',
+            'next_url': r'var\s+nextpage\s*=\s*["\']([^"\']+)["\']',
+            'chapter_list_url': r'var\s+chapterpage\s*=\s*["\']([^"\']+)["\']'
+        }
+        
+        for key, pattern in patterns.items():
+            try:
+                match = re.search(pattern, html_content, re.DOTALL)
+                if match:
+                    value = match.group(1)
+                    nav[key] = value
+                    logger.debug(f"Found {key}: {value[:50]}...")
+            except Exception as e:
+                logger.warning(f"Error extracting {key}: {str(e)}")
+        
+        return nav
 
 class CacheThread(QThread):
-    def __init__(self, cache_manager, book_id, chapters):
+    def __init__(self, cache_manager, book_id, chapters, source_manager=None):
         super().__init__()
         self.cache_manager = cache_manager
         self.book_id = book_id
         self.chapters = chapters
+        self.source_manager = source_manager or SourceManager()
         
     def run(self):
         for chapter in self.chapters:
             try:
-                self.cache_manager.cache_chapter(self.book_id, chapter['url'], chapter)
+                # Skip if already cached
+                if self.cache_manager.is_cached(self.book_id, chapter['url']):
+                    continue
+
+                # Get source handler
+                source = self.source_manager.get_source_for_url(chapter['url'])
+                if not source:
+                    continue
+
+                # Extract complete content
+                content = source.extract_chapter_content(chapter['url'])
+                if content:
+                    self.cache_manager.cache_chapter(self.book_id, chapter['url'], content)
             except Exception as e:
                 logger.error(f"Error caching chapter {chapter['url']}: {str(e)}")
 
 class MainWindow(QMainWindow):
-    chapter_loaded = Signal(dict)
+    chapter_loaded = Signal(str, str)  # Signal for chapter loaded (url, title)
     error_occurred = Signal(str)
     loading_started = Signal(str)
     book_loaded = Signal(int, list)  # book_id, chapters
@@ -124,7 +193,8 @@ class MainWindow(QMainWindow):
         self.setup_loader()
         
     def setup_loader(self):
-        self.loader = ChapterLoader(self.source_manager, self.cache_manager)
+        """Set up the chapter loader and connect signals"""
+        self.loader = ChapterLoader()
         self.loader.chapter_loaded.connect(self.on_chapter_loaded)
         self.loader.error_occurred.connect(self.show_error)
         self.loader.loading_started.connect(self.on_loading_started)
@@ -249,7 +319,7 @@ class MainWindow(QMainWindow):
             }
         """)
         # Use system fonts as fallback
-        font = QFont("Microsoft YaHei, PingFang SC, Hiragino Sans GB, Noto Sans CJK SC, sans-serif", 16)
+        font = QFont("Arial", 16)  # Changed from Microsoft YaHei to Arial
         self.content_view.setFont(font)
         
     def setup_toolbar(self):
@@ -356,7 +426,7 @@ class MainWindow(QMainWindow):
             # Start caching in background
             if self.cache_thread is not None:
                 self.cache_thread.quit()
-            self.cache_thread = CacheThread(self.cache_manager, book_id, chapters[:5])
+            self.cache_thread = CacheThread(self.cache_manager, book_id, chapters[:5], self.source_manager)
             self.cache_thread.start()
             
             self.statusBar().showMessage(f"Loaded book with {len(chapters)} chapters")
@@ -405,6 +475,9 @@ class MainWindow(QMainWindow):
             
         logger.info(f"Loading chapter from URL: {url}")
         
+        # Set current chapter URL before loading
+        self.current_chapter_url = url
+        
         # Update chapter list selection
         for i in range(self.chapter_list.count()):
             item = self.chapter_list.item(i)
@@ -413,17 +486,21 @@ class MainWindow(QMainWindow):
                 break
                 
         # Pass the current_book_id to the loader
-        self.loader.set_url(url, self.current_book_id)
+        self.loader.set_url(self.current_book_id, url)
+        # Start the loader thread
+        self.loader.start()
+        logger.info("Started loader thread")
         
-    def on_loading_started(self, url: str):
-        """Handle chapter loading start"""
-        self.current_chapter_url = url
-        self.statusBar().showMessage(f"Loading chapter...")
+    def on_loading_started(self):
+        """Called when chapter loading starts"""
+        self.content_view.setHtml("<h2>Loading chapter...</h2>")
+        self.content_view.verticalScrollBar().setValue(0)
         
     def on_chapter_loaded(self, content: Dict):
         """Handle loaded chapter content"""
         logger.info(f"Received chapter content for URL: {content.get('url')}")
         logger.debug(f"Content keys: {content.keys()}")
+        logger.debug(f"Content: {content}")  # Add full content debug
         
         if not content or content.get('url') != self.current_chapter_url:
             logger.warning(f"Content URL mismatch. Expected: {self.current_chapter_url}, Got: {content.get('url')}")
@@ -490,14 +567,14 @@ class MainWindow(QMainWindow):
                     max-width: 800px;
                     margin: 0 auto;
                     padding: 40px 20px;
-                    font-family: 'Microsoft YaHei', 'PingFang SC', 'Hiragino Sans GB', 'Noto Sans CJK SC', sans-serif;
+                    font-family: 'Arial', 'PingFang SC', 'Hiragino Sans GB', 'Noto Sans CJK SC', sans-serif;
                 ">
                     <h1 style="
                         font-size: 24px;
                         margin-bottom: 2em;
                         text-align: center;
                         font-weight: bold;
-                    ">{content['title']}</h1>
+                    ">{content.get('title', 'No Title')}</h1>
                     <div style="
                         font-size: 18px;
                         line-height: 1.8;
@@ -508,6 +585,7 @@ class MainWindow(QMainWindow):
                 </div>
             """
             self.content_view.setHtml(html_content)
+            self.content_view.update()  # Force update
             logger.info("Content view updated successfully")
             
             # Scroll to top
@@ -525,16 +603,20 @@ class MainWindow(QMainWindow):
                         logger.info(f"Caching {len(next_chapters)} next chapters")
                         if self.cache_thread is not None:
                             self.cache_thread.quit()
-                        self.cache_thread = CacheThread(self.cache_manager, self.current_book_id, next_chapters)
+                        self.cache_thread = CacheThread(self.cache_manager, self.current_book_id, next_chapters, self.source_manager)
                         self.cache_thread.start()
                 except (StopIteration, IndexError) as e:
                     logger.warning(f"Error caching next chapters: {str(e)}")
                 
             self.statusBar().showMessage("Chapter loaded")
             
+            # Emit chapter loaded signal
+            self.chapter_loaded.emit(content.get('url', ''), content.get('title', ''))
+            
         except Exception as e:
             logger.error(f"Error displaying chapter: {str(e)}", exc_info=True)
             self.show_error(f"Error displaying chapter: {str(e)}")
+            self.error_occurred.emit(str(e))
             
     def update_chapter_list(self):
         """Update the chapter list widget"""
@@ -703,39 +785,15 @@ class MainWindow(QMainWindow):
         # Update order in database
         self.reading_progress.update_book_order(books)
 
-    def _extract_js_variables(self, html_content: str) -> dict:
-        """Extract variables from JavaScript with improved error handling"""
-        variables = {}
-        
-        # Extract all relevant variables using regex
-        patterns = {
-            'title': r'var\s+ChapterTitle\s*=\s*["\']([^"\']+)["\']',
-            'book_name': r'var\s+BookName\s*=\s*["\']([^"\']+)["\']',
-            'prev_url': r'var\s+prevpage\s*=\s*["\']([^"\']+)["\']',
-            'next_url': r'var\s+nextpage\s*=\s*["\']([^"\']+)["\']',
-            'chapter_list_url': r'var\s+chapterpage\s*=\s*["\']([^"\']+)["\']',
-            'content': r'var\s+TxtContents\s*=\s*["\']([^"\']+)["\']'
-        }
-        
-        for key, pattern in patterns.items():
-            try:
-                match = re.search(pattern, html_content, re.DOTALL)
-                if match:
-                    value = match.group(1)
-                    # Handle escaped content
-                    if key == 'content':
-                        value = value.encode().decode('unicode_escape')
-                    variables[key] = value
-                    logger.debug(f"Found {key}: {value[:50]}...")
-            except Exception as e:
-                logger.warning(f"Error extracting {key}: {str(e)}")
-        
-        return variables
-
     def clear_invalid_cache(self):
         """Clear any invalid cache entries"""
         try:
             logger.info("Clearing invalid cache entries")
+            
+            # Clear invalid database cache entries
+            self.cache_manager.clear_invalid_cache()
+            
+            # Clear invalid file cache entries
             cache_files = os.listdir(self.cache_dir)
             cleared_count = 0
             
@@ -748,8 +806,8 @@ class MainWindow(QMainWindow):
                     with open(file_path, 'r', encoding='utf-8') as f:
                         content = json.load(f)
                         
-                    # Check if cache entry is valid
-                    if not content.get('content'):
+                    # Check if cache entry is valid (has all required fields)
+                    if not content.get('content') or not content.get('title') or not content.get('url'):
                         logger.debug(f"Removing invalid cache file: {cache_file}")
                         os.remove(file_path)
                         cleared_count += 1
@@ -764,10 +822,23 @@ class MainWindow(QMainWindow):
             logger.error(f"Error clearing invalid cache: {str(e)}", exc_info=True)
 
 def main():
+    print("Starting QuickReader application...")
     app = QApplication(sys.argv)
+    print("Created QApplication instance")
+    
     window = MainWindow()
+    print("Created MainWindow instance")
+    
     window.show()
-    sys.exit(app.exec_())
+    print("Called window.show()")
+    
+    window.raise_()
+    print("Called window.raise_()")
+    
+    print("Window geometry:", window.geometry())
+    print("Window is visible:", window.isVisible())
+    
+    sys.exit(app.exec())
 
 if __name__ == '__main__':
     main() 
